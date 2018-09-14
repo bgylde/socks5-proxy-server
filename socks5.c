@@ -21,12 +21,12 @@
 
 #include "socks5.h"
 
-#define MAX_USER 10
+#define MAX_USER 1024
 #define BUFF_SIZE 1024
 
 #define AUTH_CODE 0x02
 
-#define TIME_OUT 6000000
+#define TIME_OUT 10      //second
 
 #define USER_NAME "wangyan"
 #define PASS_WORD "123456"
@@ -100,7 +100,7 @@ int AuthPassword( int sock )
         close( sock );
         return -1;
     }
-    printf( "AuthPass: recv %d bytes\n", ret );
+    printf( "AuthPass: recv %d bytes, data: %s\n", ret, recv_buffer );
 
     auth_request = (AUTH_REQUEST *)recv_buffer;
 
@@ -270,15 +270,13 @@ int ForwardData( int sock, int real_server_sock )
         FD_SET( sock, &fd_read );
         FD_SET( real_server_sock, &fd_read );
 
-        time_out.tv_sec = 0;
-        time_out.tv_usec = TIME_OUT;
+        time_out.tv_sec = TIME_OUT;
+        time_out.tv_usec = 0;
         max_fd = sock > real_server_sock ? sock + 1 : real_server_sock + 1;
-        printf("2 ### pthread_id: %d\n", pthread_self());
-        printf("max_fd: %d, sock: %d, real_server_sock: %d\n", max_fd, sock, real_server_sock);
-        ret = select( max_fd, &fd_read, &fd_read, NULL, &time_out );
+        ret = select( max_fd, &fd_read, NULL, NULL, &time_out );
         if( -1 == ret )
         {
-            perror( "select socket error" );
+            printf("errno: %d, error: %s\n", errno, strerror(errno));
             break;
         }
         else if( 0 == ret )
@@ -295,7 +293,7 @@ int ForwardData( int sock, int real_server_sock )
             ret = recv( sock, recv_buffer, BUFF_SIZE, 0 );
             if( ret > 0 )
             {
-                printf( "%s", recv_buffer );
+                // printf( "%s", recv_buffer );
                 printf( "recv %d bytes from client.\n", ret );
                 ret = send( real_server_sock, recv_buffer, ret, 0 );
                 if( ret == -1 )
@@ -323,7 +321,7 @@ int ForwardData( int sock, int real_server_sock )
             ret = recv( real_server_sock, recv_buffer, BUFF_SIZE, 0 );
             if( ret > 0 )
             {
-                printf( "%s", recv_buffer );
+                // printf( "%s", recv_buffer );
                 printf( "recv %d bytes from real server.\n", ret );
                 ret = send( sock, recv_buffer, ret, 0 );
                 if( ret == -1 )
@@ -350,8 +348,7 @@ int ForwardData( int sock, int real_server_sock )
 
 int Socks5( void *client_sock )
 {
-    int sock = *(int *)client_sock;
-    printf("0 ### pthread_id: %d, sock: %d\n", pthread_self(), sock);
+    int sock = *((int *)client_sock);
     if( SelectMethod( sock ) == -1 )
     {
         printf( "socks version error\n" );
@@ -371,7 +368,6 @@ int Socks5( void *client_sock )
         return -1;
     }
 
-    printf("1 ### pthread_id: %d, sock: %d, real_server_sock: %d\n", pthread_self(), sock, real_server_sock);
     ForwardData( sock, real_server_sock );
 
     close( sock );
@@ -427,7 +423,7 @@ int main( int argc, char *argv[] )
 
     while( client_sock = accept( listen_sock, (struct sockaddr *)&cin, (socklen_t *)&client_len ) )
     {
-        printf( "\n\nConnected from %s, processing......\n", inet_ntoa( cin.sin_addr ) );
+        printf( "\n\nConnected from %s, sock: %d, processing......\n", inet_ntoa( cin.sin_addr ), client_sock );
 
         pthread_t work_thread;
         if( pthread_create( &work_thread, NULL, (void *)Socks5, (void *)&client_sock ) )
